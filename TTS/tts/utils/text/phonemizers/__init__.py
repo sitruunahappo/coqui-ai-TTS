@@ -29,6 +29,8 @@ try:
 except ImportError:
     ZH_CN_Phonemizer: None = None
 
+from TTS.tts.utils.text.phonemizers.zh_yue_phonemizer import ZH_YUE_Phonemizer
+
 PHONEMIZERS = {b.name(): b for b in (ESpeak, Gruut) if b is not None}
 
 
@@ -62,6 +64,9 @@ if KO_KR_Phonemizer is not None:
 if ZH_CN_Phonemizer is not None:
     PHONEMIZERS[ZH_CN_Phonemizer.name()] = ZH_CN_Phonemizer
     DEF_LANG_TO_PHONEMIZER["zh-cn"] = ZH_CN_Phonemizer.name()
+if ZH_YUE_Phonemizer is not None:
+    PHONEMIZERS[ZH_YUE_Phonemizer.name()] = ZH_YUE_Phonemizer
+    DEF_LANG_TO_PHONEMIZER["zh-yue"] = ZH_YUE_Phonemizer.name()
 
 
 def get_phonemizer_by_name(name: str, **kwargs: Any) -> BasePhonemizer:
@@ -84,6 +89,10 @@ def get_phonemizer_by_name(name: str, **kwargs: Any) -> BasePhonemizer:
         if ZH_CN_Phonemizer is None:
             raise ImportError("You need to install ZH phonemizer dependencies. Try `pip install coqui-tts[zh]`")
         return ZH_CN_Phonemizer(**kwargs)
+    if name == "zh_yue_phonemizer":
+        if ZH_YUE_Phonemizer is None:
+            raise ImportError("You need to install _TBD_ phonemizer dependencies.")
+       	return ZH_YUE_Phonemizer(**kwargs)
     if name == "ja_jp_phonemizer":
         if JA_JP_Phonemizer is None:
             raise ImportError("You need to install JA phonemizer dependencies. Try `pip install coqui-tts[ja]`")
