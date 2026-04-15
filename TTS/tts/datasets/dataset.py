@@ -6,6 +6,7 @@ import random
 from math import floor
 from typing import Any
 
+import librosa
 import numpy as np
 import numpy.typing as npt
 import torch
@@ -765,7 +766,7 @@ class F0Dataset:
         audio_config=None,  # pylint: disable=unused-argument
         cache_path: str | None = None,
         precompute_num_workers: int = 0,
-        normalize_f0: bool = True,
+        normalize_f0: bool = False,
     ) -> None:
         self.samples = samples
         self.ap = ap
@@ -866,6 +867,7 @@ class F0Dataset:
             pitch = self._compute_and_save_pitch(self.ap, wav_file, pitch_file)
         else:
             pitch = np.load(pitch_file)
+
         return pitch.astype(np.float32)
 
     def collate_fn(self, batch):
