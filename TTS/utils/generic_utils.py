@@ -66,8 +66,14 @@ def import_class(module_path: str) -> type[Any]:
     Returns:
         object: The imported class.
     """
+    print(module_path)
+    
     class_name = module_path.split(".")[-1]
+    print(class_name)
+    
     module_path = ".".join(module_path.split(".")[:-1])
+    print(module_path)
+    
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
 

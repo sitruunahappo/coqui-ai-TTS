@@ -199,7 +199,11 @@ class CouplingBlock(nn.Module):
         self.pitch_size = pitch_size
         
     def _set_pitch_size(self):
-        self.wn.set_pitch_size(self.pitch_size)
+        try:
+            self.wn.set_pitch_size(self.pitch_size)
+        except:
+            self.wn.set_pitch_size(None)
+
             
     def forward(self, x, x_mask=None, pitch=None, reverse=False, g=None, **kwargs):  # pylint: disable=unused-argument
         """

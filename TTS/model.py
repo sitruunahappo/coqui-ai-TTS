@@ -70,7 +70,11 @@ class BaseTrainerModel(TrainerModel):
 
         """
         state = load_fsspec(checkpoint_path, map_location="cpu", cache=cache)
-        self.load_state_dict(state["model"], strict=strict)
+
+        try:
+            self.load_state_dict(state["model"], strict=strict)
+        except RuntimeError:
+            self.load_state_dict(state["model"], strict=False)
         if eval:
             self.eval()
 

@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn.utils import parametrize
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @torch.jit.script
 def fused_add_tanh_sigmoid_multiply(input_a, input_b, n_channels):
@@ -23,7 +24,8 @@ class FiLMLayer(nn.Module):
         """
         super(FiLMLayer, self).__init__()
         self.in_channels = in_channels
-        self.film = nn.Linear(cond_channels, in_channels * 2)
+        self.dropout = nn.Dropout(p=0.5)
+        self.film = nn.Linear(cond_channels, in_channels * 2).to(device)
 
     def forward(self, x, c):
         """
@@ -34,10 +36,12 @@ class FiLMLayer(nn.Module):
         Returns:
         Tensor: The modulated feature maps with the same shape as input x.
         """
+        
         # x in this case is [B, C, T]
         x = x.transpose(1, 2)
 
         film_params = self.film(c)
+        film_params = self.dropout(film_params)
         gamma, beta = torch.chunk(film_params, chunks=2, dim=-1)
         out = gamma * x + beta
        
@@ -128,10 +132,12 @@ class WN(torch.nn.Module):
         self.pitch_size = pitch_size
         
     def _set_pitch_size(self):
-        self.film = FiLMLayer(self.hidden_channels, self.pitch_size[2])
+        self.film = FiLMLayer(self.hidden_channels, self.pitch_size[2]).to(device)
         
     def forward(self, x, x_mask=None, pitch=None, g=None, **kwargs):  # pylint: disable=unused-argument
-        self._set_pitch_size()
+        if self.pitch_size:
+            self._set_pitch_size()
+
         output = torch.zeros_like(x)
         n_channels_tensor = torch.IntTensor([self.hidden_channels])
         x_mask = 1.0 if x_mask is None else x_mask
@@ -148,10 +154,24 @@ class WN(torch.nn.Module):
                 g_l = torch.zeros_like(x_in)
                 
             acts = fused_add_tanh_sigmoid_multiply(x_in, g_l, n_channels_tensor)
-            
-            if self.pitch_size:
+            if self.pitch_size and pitch is not None:
+                #print('FiLM running') # Just comfirm the layer does run
+                acts = acts.to(device)
                 acts = self.film(acts, pitch)
+            else:
+                pitch = torch.zeros_like(acts) #+ 0.0036
+                pitch = pitch.transpose(1, 2)
+                pitch = pitch.to(device)
+                ori_dev = acts.device
+                acts = acts.to(device)
+                
+                self.pitch_size = pitch.shape
+                self._set_pitch_size()
+                acts = self.film(acts, pitch)
+                
+                #acts = acts.to(ori_dev)
             
+            acts = acts.to(x_in.device)
             res_skip_acts = self.res_skip_layers[i](acts)
             if i < self.num_layers - 1:
                 x = (x + res_skip_acts[:, : self.hidden_channels, :]) * x_mask
@@ -162,11 +182,20 @@ class WN(torch.nn.Module):
 
     def remove_weight_norm(self):
         if self.c_in_channels != 0:
-            parametrize.remove_parametrizations(self.cond_layer, "weight")
+            try:
+                parametrize.remove_parametrizations(self.cond_layer, "weight")
+            except ValueError:
+                pass
         for l in self.in_layers:
-            parametrize.remove_parametrizations(l, "weight")
+            try:
+                parametrize.remove_parametrizations(l, "weight")
+            except ValueError:
+                pass
         for l in self.res_skip_layers:
-            parametrize.remove_parametrizations(l, "weight")
+            try:
+                parametrize.remove_parametrizations(l, "weight")
+            except ValueError:
+                pass
 
 
 class WNBlocks(nn.Module):

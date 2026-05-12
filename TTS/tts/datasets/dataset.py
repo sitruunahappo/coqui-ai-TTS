@@ -766,7 +766,7 @@ class F0Dataset:
         audio_config=None,  # pylint: disable=unused-argument
         cache_path: str | None = None,
         precompute_num_workers: int = 0,
-        normalize_f0: bool = False,
+        normalize_f0: bool = True,
     ) -> None:
         self.samples = samples
         self.ap = ap
