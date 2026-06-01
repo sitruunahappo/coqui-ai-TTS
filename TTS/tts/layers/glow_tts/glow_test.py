@@ -205,7 +205,7 @@ class CouplingBlock(nn.Module):
             self.wn.set_pitch_size(None)
 
             
-    def forward(self, x, x_mask=None, pitch=None, reverse=False, g=None, **kwargs):  # pylint: disable=unused-argument
+    def forward(self, x, x_mask=None, pitch=None, reverse=False, epoch=0, g=None, **kwargs):  # pylint: disable=unused-argument
         """
         Shapes:
             - x: :math:`[B, C, T]`
@@ -219,7 +219,7 @@ class CouplingBlock(nn.Module):
         x_0, x_1 = x[:, : self.in_channels // 2], x[:, self.in_channels // 2 :]
 
         x = self.start(x_0) * x_mask
-        x = self.wn(x, x_mask, pitch, g)
+        x = self.wn(x, x_mask, pitch, epoch, g)
         out = self.end(x)
 
         z_0 = x_0

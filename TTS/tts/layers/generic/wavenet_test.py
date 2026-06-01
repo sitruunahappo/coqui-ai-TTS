@@ -13,8 +13,9 @@ def fused_add_tanh_sigmoid_multiply(input_a, input_b, n_channels):
     acts = t_act * s_act
     return acts
 
+
 class FiLMLayer(nn.Module):
-    def __init__(self, in_channels, cond_channels):
+    def __init__(self, in_channels, cond_channels, init_dropout=0.2, final_dropout=0.5, epoches=1000):
         """
         Feature-wise Linear Modulation (FiLM) layer
         
@@ -24,10 +25,22 @@ class FiLMLayer(nn.Module):
         """
         super(FiLMLayer, self).__init__()
         self.in_channels = in_channels
-        self.dropout = nn.Dropout(p=0.5)
+        
+        self.init_dropout = init_dropout
+        self.final_dropout = final_dropout
+        self.dropout = nn.Dropout(p=self.init_dropout)
+
+        self.epoches = epoches
         self.film = nn.Linear(cond_channels, in_channels * 2).to(device)
 
-    def forward(self, x, c):
+    def _dropout_rate(self, epoch):
+        return self.init_dropout * ((self.final_dropout / self.init_dropout) ** (epoch / self.epoches))
+
+    def _update_dropout(self, epoch):
+        p = self._dropout_rate(epoch)
+        self.dropout = nn.Dropout(p=p)
+
+    def forward(self, x, c, epoch):
         """
         Parameters:
         x (Tensor): The input feature maps with shape [batch_size, time, in_channels].
@@ -36,6 +49,7 @@ class FiLMLayer(nn.Module):
         Returns:
         Tensor: The modulated feature maps with the same shape as input x.
         """
+        self._update_dropout(epoch)
         
         # x in this case is [B, C, T]
         x = x.transpose(1, 2)
@@ -134,7 +148,7 @@ class WN(torch.nn.Module):
     def _set_pitch_size(self):
         self.film = FiLMLayer(self.hidden_channels, self.pitch_size[2]).to(device)
         
-    def forward(self, x, x_mask=None, pitch=None, g=None, **kwargs):  # pylint: disable=unused-argument
+    def forward(self, x, x_mask=None, pitch=None, epoch=0, g=None, **kwargs):  # pylint: disable=unused-argument
         if self.pitch_size:
             self._set_pitch_size()
 
@@ -157,8 +171,10 @@ class WN(torch.nn.Module):
             if self.pitch_size and pitch is not None:
                 #print('FiLM running') # Just comfirm the layer does run
                 acts = acts.to(device)
-                acts = self.film(acts, pitch)
+                acts = self.film(acts, pitch, epoch)
+            '''
             else:
+                # I have forget what happened here
                 pitch = torch.zeros_like(acts) #+ 0.0036
                 pitch = pitch.transpose(1, 2)
                 pitch = pitch.to(device)
@@ -170,7 +186,8 @@ class WN(torch.nn.Module):
                 acts = self.film(acts, pitch)
                 
                 #acts = acts.to(ori_dev)
-            
+            '''
+
             acts = acts.to(x_in.device)
             res_skip_acts = self.res_skip_layers[i](acts)
             if i < self.num_layers - 1:

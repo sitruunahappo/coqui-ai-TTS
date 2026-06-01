@@ -166,7 +166,7 @@ class GlowTTS(BaseTTS):
             if getattr(f, "set_ddi", False):
                 f.set_ddi(False)
 
-    def forward(self, x, x_lengths, y, y_lengths=None, pitch=None, aux_input: dict[str, Any] | None = None):
+    def forward(self, x, x_lengths, y, y_lengths=None, pitch=None, epoch=0, aux_input: dict[str, Any] | None = None):
         """
         Args:
             x (torch.Tensor):
@@ -213,7 +213,7 @@ class GlowTTS(BaseTTS):
         # [B, 1, T_en, T_de]
         attn_mask = torch.unsqueeze(x_mask, -1) * torch.unsqueeze(y_mask, 2)
         # decoder pass
-        z, logdet = self.decoder(y, y_mask, pitch=pitch, g=g, reverse=False)
+        z, logdet = self.decoder(y, y_mask, pitch=pitch, epoch=epoch, g=g, reverse=False)
         # find the alignment path
         with torch.no_grad():
             o_scale = torch.exp(-2 * o_log_scale)
@@ -393,6 +393,7 @@ class GlowTTS(BaseTTS):
         mel_lengths = batch["mel_lengths"]
         d_vectors = batch["d_vectors"]
         speaker_ids = batch["speaker_ids"]
+        epoch = batch['epoch']
         
         #self.encoder.pitch_size = pitch.shape
         self.decoder.set_pitch_size(pitch.shape)
@@ -407,6 +408,7 @@ class GlowTTS(BaseTTS):
                     mel_input,
                     mel_lengths,
                     pitch, 
+                    epoch,
                     aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids},
                 )
             outputs = None
@@ -420,6 +422,7 @@ class GlowTTS(BaseTTS):
                 mel_input,
                 mel_lengths,
                 pitch,
+                epoch,
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids},
             )
 

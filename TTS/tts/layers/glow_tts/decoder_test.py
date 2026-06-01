@@ -122,7 +122,7 @@ class Decoder(nn.Module):
             except AttributeError:
                 pass
                 
-    def forward(self, x, x_mask, pitch=None, pitch_size=None, g=None, reverse=False):
+    def forward(self, x, x_mask, pitch=None, pitch_size=None, epoch=0, g=None, reverse=False):
         """
         Shapes:
             - x:  :math:`[B, C, T]`
@@ -142,10 +142,10 @@ class Decoder(nn.Module):
             x, x_mask = squeeze(x, x_mask, self.num_squeeze)
         for f in flows:
             if not reverse:
-                x, logdet = f(x, x_mask, pitch=pitch, g=g, reverse=reverse)
+                x, logdet = f(x, x_mask, pitch=pitch, epoch=epoch, g=g, reverse=reverse)
                 logdet_tot += logdet
             else:
-                x, logdet = f(x, x_mask, pitch=pitch, g=g, reverse=reverse)
+                x, logdet = f(x, x_mask, pitch=pitch, epoch=epoch, g=g, reverse=reverse)
         if self.num_squeeze > 1:
             x, x_mask = unsqueeze(x, x_mask, self.num_squeeze)
         return x, logdet_tot
