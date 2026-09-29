@@ -38,7 +38,7 @@ class FiLMLayer(nn.Module):
 
     def _update_dropout(self, epoch):
         p = self._dropout_rate(epoch)
-        self.dropout = nn.Dropout(p=p)
+        #self.dropout = nn.Dropout(p=0.2)
 
     def forward(self, x, c, epoch):
         """
@@ -55,7 +55,7 @@ class FiLMLayer(nn.Module):
         x = x.transpose(1, 2)
 
         film_params = self.film(c)
-        film_params = self.dropout(film_params)
+        #film_params = self.dropout(film_params)
         gamma, beta = torch.chunk(film_params, chunks=2, dim=-1)
         out = gamma * x + beta
        
@@ -146,7 +146,7 @@ class WN(torch.nn.Module):
         self.pitch_size = pitch_size
         
     def _set_pitch_size(self):
-        self.film = FiLMLayer(self.hidden_channels, self.pitch_size[2]).to(device)
+        self.film = FiLMLayer(2*self.hidden_channels, self.pitch_size[2]).to(device)
         
     def forward(self, x, x_mask=None, pitch=None, epoch=0, g=None, **kwargs):  # pylint: disable=unused-argument
         if self.pitch_size:
@@ -166,12 +166,14 @@ class WN(torch.nn.Module):
                 g_l = g[:, cond_offset : cond_offset + 2 * self.hidden_channels, :]
             else:
                 g_l = torch.zeros_like(x_in)
-                
-            acts = fused_add_tanh_sigmoid_multiply(x_in, g_l, n_channels_tensor)
+               
             if self.pitch_size and pitch is not None:
+                #print(self.in_channels)
+                #print(self.pitch_size)
+                #print(x_in.size())
                 #print('FiLM running') # Just comfirm the layer does run
-                acts = acts.to(device)
-                acts = self.film(acts, pitch, epoch)
+                x_in = x_in.to(device)
+                x_in = self.film(x_in, pitch, epoch)
             '''
             else:
                 # I have forget what happened here
@@ -188,7 +190,8 @@ class WN(torch.nn.Module):
                 #acts = acts.to(ori_dev)
             '''
 
-            acts = acts.to(x_in.device)
+            x_in = x_in.to(g_l.device)
+            acts = fused_add_tanh_sigmoid_multiply(x_in, g_l, n_channels_tensor)
             res_skip_acts = self.res_skip_layers[i](acts)
             if i < self.num_layers - 1:
                 x = (x + res_skip_acts[:, : self.hidden_channels, :]) * x_mask

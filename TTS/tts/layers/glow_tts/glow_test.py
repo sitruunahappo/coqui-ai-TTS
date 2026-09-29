@@ -214,6 +214,10 @@ class CouplingBlock(nn.Module):
         """
         self._set_pitch_size()
         
+        # using uni random noise 
+        #if pitch is not None:  
+        #    pitch = torch.rand_like(pitch)
+
         if x_mask is None:
             x_mask = 1
         x_0, x_1 = x[:, : self.in_channels // 2], x[:, self.in_channels // 2 :]

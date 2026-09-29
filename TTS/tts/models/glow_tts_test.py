@@ -10,7 +10,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-
 from TTS.tts.configs.glow_tts_config import GlowTTSConfig
 from TTS.tts.layers.glow_tts.decoder_test import Decoder
 from TTS.tts.layers.glow_tts.encoder import Encoder
@@ -20,6 +19,8 @@ from TTS.tts.utils.speakers import SpeakerManager
 from TTS.tts.utils.text.tokenizer import TTSTokenizer
 from TTS.tts.utils.visual import plot_alignment, plot_spectrogram
 from TTS.tts.datasets.dataset import TTSDataset
+
+from TTS.tts.models.predictor import TemporalPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +365,37 @@ class GlowTTS(BaseTTS):
             pitch = F.interpolate(pitch, size=(z.shape[2] / 2)), mode='linear')
             self.decoder.set_pitch_size(pitch.shape)
         '''
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        
+        pp = TemporalPredictor(vocab_size=49, 
+                               filter_size=384+1, 
+                               enc_channels=384,
+                               kernel_size=3, 
+                               hidden_channels=384,
+                               text_size=256,
+                               pitch_size=512,
+                               dropout=0)
+        pp = pp.to(device)
+        
+        checkpoint = torch.load('/proj/uppmax2025-2-505/woof/cantonese_daily/predictor/best_model_805.pth')
+        pp.load_state_dict(checkpoint['model_state_dict'])
+        pp.optimiser.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
+        pp.eval()
 
+        o_mean = o_mean.to(device)
+        x_mask = x_mask.to(device)
+        
+        pad_x = nn.ConstantPad2d((0, 256-o_mean.size(2), 0, 384-o_mean.size(1)), 0)
+        pad_m = nn.ConstantPad1d((0, 256-o_mean.size(2)), 0)
+        o_mean = pad_x(o_mean)
+        x_mask = pad_m(x_mask)
+        
+        pitch = pp.forward(o_mean, x_mask)
+        #pitch = torch.rand_like(pitch_)
+        #pitch = None
+        
         y, logdet = self.decoder(z, y_mask, pitch=pitch, g=g, reverse=True)
         attn = attn.squeeze(1).permute(0, 2, 1)
         outputs = {
@@ -598,7 +629,7 @@ class GlowTTS(BaseTTS):
         return GlowTTS(new_config, ap, tokenizer, speaker_manager)
 
 
-# Dirty hack x1
+# Dirty hack
 class GlowTTSTest(BaseTTS):
     """GlowTTS model.
 
@@ -742,7 +773,7 @@ class GlowTTSTest(BaseTTS):
             if getattr(f, "set_ddi", False):
                 f.set_ddi(False)
 
-    def forward(self, x, x_lengths, y, y_lengths=None, pitch=None, aux_input: dict[str, Any] | None = None):
+    def forward(self, x, x_lengths, y, y_lengths=None, pitch=None, epoch=0, aux_input: dict[str, Any] | None = None):
         """
         Args:
             x (torch.Tensor):
@@ -789,7 +820,7 @@ class GlowTTSTest(BaseTTS):
         # [B, 1, T_en, T_de]
         attn_mask = torch.unsqueeze(x_mask, -1) * torch.unsqueeze(y_mask, 2)
         # decoder pass
-        z, logdet = self.decoder(y, y_mask, pitch=pitch, g=g, reverse=False)
+        z, logdet = self.decoder(y, y_mask, pitch=pitch, epoch=epoch, g=g, reverse=False)
         # find the alignment path
         with torch.no_grad():
             o_scale = torch.exp(-2 * o_log_scale)
@@ -939,7 +970,38 @@ class GlowTTSTest(BaseTTS):
             pitch = pitch[pitch != 0]
             pitch = F.interpolate(pitch, size=(z.shape[2] / 2)), mode='linear')
             self.decoder.set_pitch_size(pitch.shape)
-        '''    
+        '''
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        
+        pp = TemporalPredictor(vocab_size=49, 
+                               filter_size=384+1, 
+                               enc_channels=384,
+                               kernel_size=3, 
+                               hidden_channels=384,
+                               text_size=256,
+                               pitch_size=512,
+                               dropout=0)
+        pp = pp.to(device)
+        
+        checkpoint = torch.load('/proj/uppmax2025-2-505/woof/cantonese_daily/predictor/best_model_805.pth')
+        pp.load_state_dict(checkpoint['model_state_dict'])
+        pp.optimiser.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
+        pp.eval()
+
+        o_mean = o_mean.to(device)
+        x_mask = x_mask.to(device)
+
+        pad_x = nn.ConstantPad2d((0, 256-o_mean.size(2), 0, 384-o_mean.size(1)), 0)
+        pad_m = nn.ConstantPad1d((0, 256-o_mean.size(2)), 0)
+        o_mean = pad_x(o_mean)
+        x_mask = pad_m(x_mask)
+        
+        pitch = pp.forward(o_mean, x_mask)
+        #pitch = torch.rand_like(pitch_)
+        #pitch = None
+        
         y, logdet = self.decoder(z, y_mask, pitch=pitch, g=g, reverse=True)
         attn = attn.squeeze(1).permute(0, 2, 1)
         outputs = {
@@ -968,6 +1030,7 @@ class GlowTTSTest(BaseTTS):
         mel_lengths = batch["mel_lengths"]
         d_vectors = batch["d_vectors"]
         speaker_ids = batch["speaker_ids"]
+        epoch = batch['epoch']
         
         #self.encoder.pitch_size = pitch.shape
         self.decoder.set_pitch_size(pitch.shape)
@@ -982,6 +1045,7 @@ class GlowTTSTest(BaseTTS):
                     mel_input,
                     mel_lengths,
                     pitch, 
+                    epoch,
                     aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids},
                 )
             outputs = None
@@ -995,6 +1059,7 @@ class GlowTTSTest(BaseTTS):
                 mel_input,
                 mel_lengths,
                 pitch,
+                epoch,
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids},
             )
 
